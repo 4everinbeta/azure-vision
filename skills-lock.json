@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "azure-resource-visualizer": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "skillPath": "skills/azure-resource-visualizer/SKILL.md",
+      "computedHash": "ffa93d60058eafad8d48fc37f7986e5cacead5780de036c05e672c79cf49ed61"
+    }
+  }
+}

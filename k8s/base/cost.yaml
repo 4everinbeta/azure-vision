@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cost-data
+  namespace: azure-vision
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cost-api
+  namespace: azure-vision
+  labels: { app.kubernetes.io/part-of: azure-vision }
+spec:
+  replicas: 1 # the SQLite cost cache is a single-writer file
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: { app: cost-api }
+  template:
+    metadata:
+      labels: { app: cost-api, app.kubernetes.io/part-of: azure-vision }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: cost-api
+          image: azure-vision-api:local
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: SERVICE, value: cost }
+            - { name: INVENTORY_URL, value: "http://inventory-api:3001" }
+          ports:
+            - { name: http, containerPort: 3001 }
+          envFrom:
+            - configMapRef: { name: azure-vision }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: tmp, mountPath: /tmp }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: "1", memory: 384Mi }
+          startupProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 2
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 20
+      volumes:
+        - { name: tmp, emptyDir: {} }
+        - name: data
+          persistentVolumeClaim: { claimName: cost-data }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cost-api
+  namespace: azure-vision
+spec:
+  selector: { app: cost-api }
+  ports:
+    - { name: http, port: 3001, targetPort: http }

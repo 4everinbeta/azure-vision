@@ -1,0 +1,58 @@
+# Dependencies and build caches
+node_modules/
+dist/
+.vite/
+.cache/
+*.tsbuildinfo
+
+# Test output
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# Local runtime data and SQLite files
+data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+
+# Environment files and local credentials (keep shareable templates)
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+!.env.*.example
+.azure/
+.kube/
+.certs/
+*.key
+*.p12
+*.pfx
+
+# Logs and private security reports
+*.log
+trivy-report.txt
+trivy-results/
+trivy-reports/
+
+# Python skill helpers
+__pycache__/
+*.py[cod]
+.venv/
+
+# Local editor and OS files
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini

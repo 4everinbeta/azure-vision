@@ -1,0 +1,132 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elasticsearch
+  namespace: azure-vision
+  labels: { app.kubernetes.io/part-of: elastic }
+spec:
+  serviceName: elasticsearch
+  replicas: 1
+  selector:
+    matchLabels: { app: elasticsearch }
+  template:
+    metadata:
+      labels: { app: elasticsearch, app.kubernetes.io/part-of: elastic }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: elasticsearch
+          image: docker.elastic.co/elasticsearch/elasticsearch-wolfi:8.19.25@sha256:5d603518d4d6b9b2c6a5354e3580d9f3040e719f506b921fcce8564d229f9223
+          command: ["/bin/tini", "--", "/bin/bash", "-c"]
+          # Elasticsearch creates its keystore alongside its configuration.
+          args:
+            - mkdir -p /tmp/elasticsearch-config && cp -R /usr/share/elasticsearch/config/. /tmp/elasticsearch-config/ && exec /usr/local/bin/docker-entrypoint.sh eswrapper
+          env:
+            - { name: discovery.type, value: single-node }
+            - { name: xpack.security.enabled, value: "false" } # cluster-internal only; never expose this Service
+            - { name: ES_JAVA_OPTS, value: "-Xms512m -Xmx512m" }
+            - { name: ES_PATH_CONF, value: /tmp/elasticsearch-config }
+          ports:
+            - { name: http, containerPort: 9200 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 200m, memory: 1Gi }
+            limits: { cpu: "2", memory: 1536Mi }
+          volumeMounts:
+            - { name: data, mountPath: /usr/share/elasticsearch/data }
+            - { name: tmp, mountPath: /tmp }
+            - { name: logs, mountPath: /usr/share/elasticsearch/logs }
+          startupProbe:
+            httpGet: { path: "/_cluster/health?local=true", port: http }
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: "/_cluster/health?local=true", port: http }
+            periodSeconds: 10
+      volumes:
+        - { name: tmp, emptyDir: {} }
+        - { name: logs, emptyDir: {} }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: azure-vision
+spec:
+  selector: { app: elasticsearch }
+  ports:
+    - { name: http, port: 9200, targetPort: http }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: azure-vision
+  labels: { app.kubernetes.io/part-of: elastic }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: kibana }
+  template:
+    metadata:
+      labels: { app: kibana, app.kubernetes.io/part-of: elastic }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: kibana
+          image: docker.elastic.co/kibana/kibana-wolfi:8.19.25@sha256:1e092dfb5791bafe351250ba96896eba4ba3a409d7b0b2467fe4d6d5911507c0
+          command: ["/bin/tini", "--", "/usr/share/kibana/bin/kibana"]
+          args:
+            - --elasticsearch.hosts=http://elasticsearch:9200
+            - --ops.cGroupOverrides.cpuPath=/
+            - --ops.cGroupOverrides.cpuAcctPath=/
+          ports:
+            - { name: http, containerPort: 5601 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 100m, memory: 512Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: data, mountPath: /usr/share/kibana/data }
+          readinessProbe:
+            httpGet: { path: /api/status, port: http }
+            periodSeconds: 10
+            failureThreshold: 30
+      volumes:
+        - { name: tmp, emptyDir: {} }
+        - { name: data, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana
+  namespace: azure-vision
+spec:
+  selector: { app: kibana }
+  ports:
+    - { name: http, port: 5601, targetPort: http }

@@ -1,0 +1,71 @@
+# Gateway for the UI: static files plus path-based routing to the API services.
+# Rendered at container start by the nginx image (envsubst on /etc/nginx/templates); only defined env vars are replaced.
+# Defaults (Dockerfile) are the k8s Service names; Container Apps overrides them with app names (e.g. http://inventory-api).
+
+# Scheme as seen by the browser: Container Apps' ingress terminates TLS and sets X-Forwarded-Proto.
+map $http_x_forwarded_proto $av_forwarded_proto {
+  default $http_x_forwarded_proto;
+  ""      $scheme;
+}
+
+# Browser IP for sign-in rate limiting: the rightmost X-Forwarded-For entry is the one appended by the platform ingress
+# (earlier entries can be client-supplied). Without an ingress in front (k8s port-forward) it is the peer address.
+map $http_x_forwarded_for $av_client_ip {
+  "~(?<av_last>[^,\s]+)\s*$" $av_last;
+  default $remote_addr;
+}
+
+server {
+  listen 8080;
+  client_max_body_size 5m;
+  proxy_read_timeout 180s; # Resource Graph and Cost Management queries can be slow
+  proxy_http_version 1.1;
+  server_tokens off;
+
+  root /usr/share/nginx/html;
+
+  add_header X-Content-Type-Options nosniff always;
+  add_header Referrer-Policy same-origin always;
+  add_header Content-Security-Policy "frame-ancestors 'none'" always;
+
+  # Note: proxy_set_header is not inherited by locations that set their own, so every proxied location repeats these.
+  # A client-supplied Authorization header is never passed on; only the gateway sets it, from the browser's session.
+  proxy_set_header Authorization "";
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $av_forwarded_proto;
+  proxy_set_header X-AV-Client-IP $av_client_ip;
+
+  location = /api/health { default_type application/json; return 200 '{"ok":true,"service":"web"}'; }
+
+  # Subrequest asking the inventory service (which holds the device-code sessions) for this browser's token.
+  # The browser's Cookie header is passed along, identifying its session.
+  location = /_token {
+    internal;
+    proxy_pass ${INVENTORY_UPSTREAM}/internal/token;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header Authorization "";
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $av_forwarded_proto;
+    proxy_set_header X-AV-Client-IP $av_client_ip;
+  }
+
+  location /api/costs {
+    auth_request /_token;
+    auth_request_set $arm_token $upstream_http_x_arm_token;
+    proxy_set_header Authorization "Bearer $arm_token"; # always overrides any client-supplied value
+    proxy_set_header Cookie ""; # the cost service only needs the token
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $av_forwarded_proto;
+    proxy_set_header X-AV-Client-IP $av_client_ip;
+    proxy_pass ${COST_UPSTREAM};
+  }
+  error_page 401 = @unauthorized;
+  location @unauthorized { default_type application/json; return 401 '{"error":"Not signed in"}'; }
+
+  location /api/layout { proxy_pass ${LAYOUT_UPSTREAM}; }
+  location /api/ { proxy_pass ${INVENTORY_UPSTREAM}; } # config, auth, inventory, search
+  location = /internal/token { return 404; }
+
+  location / { try_files $uri /index.html; }
+}

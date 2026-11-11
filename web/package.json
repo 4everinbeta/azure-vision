@@ -1,0 +1,26 @@
+{
+  "name": "@azure-vision/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "@azure-vision/shared": "*",
+    "@azure/msal-browser": "^3.27.0",
+    "@xyflow/react": "^12.3.5",
+    "html-to-image": "^1.11.13",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "adm-zip": "^0.6.1",
+    "vite": "^6.4.4"
+  }
+}

@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: inventory-data
+  namespace: azure-vision
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-api
+  namespace: azure-vision
+  labels: { app.kubernetes.io/part-of: azure-vision }
+spec:
+  replicas: 1 # holds the in-memory device-code session; the SQLite cache is a single-writer file
+  strategy:
+    type: Recreate # the ReadWriteOnce volume cannot be mounted by old and new pods at once
+  selector:
+    matchLabels: { app: inventory-api }
+  template:
+    metadata:
+      labels: { app: inventory-api, app.kubernetes.io/part-of: azure-vision }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: inventory-api
+          image: azure-vision-api:local
+          imagePullPolicy: IfNotPresent # Docker Desktop's cluster shares the local image store
+          env:
+            - { name: SERVICE, value: inventory }
+          ports:
+            - { name: http, containerPort: 3001 }
+          envFrom:
+            - configMapRef: { name: azure-vision }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: tmp, mountPath: /tmp }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 100m, memory: 192Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          startupProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 2
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 20
+      volumes:
+        - { name: tmp, emptyDir: {} }
+        - name: data
+          persistentVolumeClaim: { claimName: inventory-data }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-api
+  namespace: azure-vision
+spec:
+  selector: { app: inventory-api }
+  ports:
+    - { name: http, port: 3001, targetPort: http }

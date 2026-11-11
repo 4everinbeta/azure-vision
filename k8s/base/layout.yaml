@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: layout-api
+  namespace: azure-vision
+  labels: { app.kubernetes.io/part-of: azure-vision }
+spec:
+  replicas: 1 # stateless: scale freely
+  selector:
+    matchLabels: { app: layout-api }
+  template:
+    metadata:
+      labels: { app: layout-api, app.kubernetes.io/part-of: azure-vision }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: layout-api
+          image: azure-vision-api:local
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: SERVICE, value: layout }
+          ports:
+            - { name: http, containerPort: 3001 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp } # tsx writes its transpile cache here
+          resources:
+            requests: { cpu: 100m, memory: 192Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          readinessProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 20
+      volumes:
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: layout-api
+  namespace: azure-vision
+spec:
+  selector: { app: layout-api }
+  ports:
+    - { name: http, port: 3001, targetPort: http }

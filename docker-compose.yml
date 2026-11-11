@@ -1,0 +1,17 @@
+services:
+  azure-vision:
+    build: .
+    init: true
+    ports:
+      - "127.0.0.1:3001:3001" # keep loopback-only: sign-in is single-user and unauthenticated locally
+    environment:
+      SOURCE: ${SOURCE:-local}
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
+      CACHE_TTL_MS: ${CACHE_TTL_MS:-86400000}
+    volumes:
+      - azure-vision-data:/data
+    restart: unless-stopped
+
+volumes:
+  azure-vision-data:

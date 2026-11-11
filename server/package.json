@@ -1,0 +1,26 @@
+{
+  "name": "@azure-vision/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@azure-vision/shared": "*",
+    "@azure/data-tables": "^13.3.2",
+    "@azure/identity": "^4.14.1",
+    "@fastify/cors": "^10.0.1",
+    "@fastify/static": "^10.1.10",
+    "better-sqlite3": "^11.10.0",
+    "elkjs": "^0.12.1",
+    "fastify": "^5.12.8",
+    "jose": "^5.9.6",
+    "tsx": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.9.0"
+  }
+}
