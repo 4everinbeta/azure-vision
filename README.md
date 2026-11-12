@@ -157,9 +157,15 @@ npm run k8s:up                  # same build + deploy without forwarding; add `-
 npm run k8s:forward             # http://localhost:3001 (loopback only), then sign in with the device code
 scripts/k8s.sh forward kibana   # http://localhost:5601
 scripts/k8s.sh status | logs [service]
-./redeploy.sh [--purge]         # stop everything, rebuild, redeploy and port-forward; --purge also deletes the PVCs; --no-forward skips forwarding
+./redeploy.sh [--purge]         # stop, rebuild, redeploy; detach port-forward and return; --purge deletes PVCs; --no-forward skips forwarding
 scripts/k8s.sh down [--purge]   # stop everything; --purge also deletes the PVCs
 ```
+
+Redeploy waits for workloads and forwarding to become ready before returning.
+The detached forward survives terminal closure; its PID and stop command are
+printed, with logs in `data/port-forward.log` (override with `PORT_FORWARD_LOG`).
+Forwarding ends when its target pod is replaced; rerun `scripts/k8s.sh forward`
+if that happens outside a redeploy.
 
 Separate pods, one codebase (`SERVICE` selects the API a process serves; `azure-vision-api` image, plus `azure-vision-web`):
 

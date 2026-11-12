@@ -15,6 +15,30 @@ require_cluster() {
     { echo "Kubernetes in Docker Desktop is not reachable (Settings > Kubernetes > enable / Reset cluster)." >&2; exit 1; }
 }
 
+require_docker() {
+  if [[ -z "${DOCKER_HOST:-}" && -z "${DOCKER_CONTEXT:-}" ]] &&
+    [[ "$(docker context show)" == default ]] &&
+    [[ "$(docker --host unix:///var/run/docker.sock info --format '{{.OperatingSystem}}')" == "Docker Desktop" ]]; then
+    export DOCKER_HOST=unix:///var/run/docker.sock
+    echo "Using the verified local Docker Desktop socket for builds." >&2
+    # Buildx enumerates context metadata even when an explicit host is selected.
+    if ! docker context ls --format '{{.Name}}' >/dev/null; then
+      docker_config=$(mktemp -d "${TMPDIR:-/tmp}/azure-vision-docker.XXXXXXXX")
+      trap 'rm -rf -- "$docker_config"' EXIT
+      if [[ -f "${DOCKER_CONFIG:-$HOME/.docker}/config.json" ]]; then
+        cp "${DOCKER_CONFIG:-$HOME/.docker}/config.json" "$docker_config/config.json"
+        chmod 600 "$docker_config/config.json"
+      fi
+      export DOCKER_CONFIG="$docker_config"
+      echo "Docker context metadata is unreadable; using temporary client configuration (registry settings preserved)." >&2
+    fi
+  fi
+  if ! docker info >/dev/null; then
+    echo "Docker is not reachable. Check Docker Desktop and your Docker context before redeploying." >&2
+    return 1
+  fi
+}
+
 # Docker Desktop's kind-based cluster has its own containerd image store, so rebuilt :local images must be
 # imported into the node (otherwise pods silently keep running the first image they saw).
 NODE=desktop-control-plane
@@ -28,6 +52,7 @@ load_images() {
 case "${1:-up}" in
   up)
     require_cluster
+    require_docker
     overlay=k8s/overlays/elastic
     [[ "${2:-}" == "--no-elastic" ]] && overlay=k8s/base
     patch_revision=$(date +%Y%m%d%H%M%S)
@@ -51,20 +76,21 @@ case "${1:-up}" in
   redeploy)
     # Stop every workload (PVC data is kept), then rebuild and deploy from scratch.
     require_cluster
+    require_docker
     kc delete deployment,statefulset,service --all --ignore-not-found --wait=true
     pass=()
     for a in "${@:2}"; do
       if [[ "$a" == --purge ]]; then kc delete pvc --all --ignore-not-found --wait=true; else pass+=("$a"); fi
     done
-    exec "$0" up "${pass[@]}"
+    "$0" up "${pass[@]}"
     ;;
   forward)
     require_cluster
     # port-forward binds to loopback only; sign-in is single-user and unauthenticated locally.
     if [[ "${2:-}" == kibana ]]; then
-      kc port-forward --address 127.0.0.1 svc/kibana "${KIBANA_PORT:-5601}:5601"
+      exec kubectl --context "$CONTEXT" -n "$NS" port-forward --address 127.0.0.1 svc/kibana "${KIBANA_PORT:-5601}:5601"
     else
-      kc port-forward --address 127.0.0.1 svc/web "$PORT:8080"
+      exec kubectl --context "$CONTEXT" -n "$NS" port-forward --address 127.0.0.1 svc/web "$PORT:8080"
     fi
     ;;
   logs) kc logs -f "deployment/${2:-inventory-api}" ;;

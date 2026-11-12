@@ -15,7 +15,8 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
-        runAsUser: 10001
+        # Preserve ownership compatibility with existing Elasticsearch PVCs.
+        runAsUser: 1000
         runAsGroup: 10001
         fsGroup: 10001
         seccompProfile: { type: RuntimeDefault }
